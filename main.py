@@ -9,68 +9,55 @@ from tkinter import filedialog, messagebox
 class ImageHandler:
     def __init__(self, min_area, min_length, distance, draw_type=0, max_area=100000, max_length=100000):
         """
-        Initialize the image handler with specific parameters for image processing.
-        :param min_area: Minimum area for contour detection.
-        :param min_length: Minimum perimeter length for contour detection.
-        :param distance: Distance threshold for point detection.
-        :param draw_type: Type of drawing to apply on detected contours (0 for polyline, 1 for lines).
-        :param max_area: Maximum area for contour detection.
-        :param max_length: Maximum perimeter length for contour detection.
+        :param min_area: Minimum area for contour detection
+        :param min_length: Minimum perimeter for contour detection
+        :param distance: Distance threshold for point detection
+        :param draw_type: Type of drawing to apply on detected contours (0 for polylines, 1 for lines)
+        :param max_area: Maximum area for contour detection
+        :param max_length: Maximum perimeter for contour detection
         """
         self.min_area = min_area
         self.max_area = max_area
         self.min_length = min_length
         self.max_length = max_length
         self.distance = distance
-        self.points_list = []  # List to store points of detected contours
-        self.high_HSV = np.array([15, 255, 255])  # Upper HSV threshold for filtering
-        self.low_HSV = np.array([0, 50, 50])  # Lower HSV threshold for filtering
+        self.points_list = []   # points of detected contours
+        self.high_HSV = np.array([15, 255, 255])    # Upper HSV threshold for filtering
+        self.low_HSV = np.array([0, 50, 50])        # Lower HSV threshold for filtering
         self.draw_type = draw_type
         self.img = None
         self.output_img = None
 
+    # Update the distance threshold for point detection
     def change_distance(self, distance):
-        """
-        Update the distance threshold for point detection.
-        :param distance: New distance threshold.
-        """
         self.distance = distance
 
+    # Update the HSV color filtering bounds
     def change_HSV(self, low_HSV, high_HSV):
-        """
-        Update the HSV color filtering bounds.
-        :param low_HSV: New lower HSV bound.
-        :param high_HSV: New upper HSV bound.
-        """
         self.low_HSV = low_HSV
         self.high_HSV = high_HSV
 
-    def resize_img(self, img, target_size=(480, 640, 3)):
-        """
-        Resize the image to a specified size.
-        :param img: Image to resize.
-        :param target_size: Target size as a tuple (height, width, channels).
-        :return: Resized image.
-        """
-        if img is not None:
+    # Resize the image
+    def resize_img(self, img, size):
+        if np.any(img):
             self.img = img
-            h, w = img.shape[:2]
-            scale = min(target_size[1] / w, target_size[0] / h)
-            resized_img = cv2.resize(img, None, fx=scale, fy=scale)
-            mask = np.zeros(target_size, dtype=np.uint8)
-            new_h, new_w = resized_img.shape[:2]
-            x_offset = (target_size[1] - new_w) // 2
-            y_offset = (target_size[0] - new_h) // 2
-            mask[y_offset:y_offset+new_h, x_offset:x_offset+new_w, :] = resized_img
-            return mask
-        return img  # Return the original image if input is None
 
-    def img_handle(self, img=None):
-        """
-        Process the image for contour detection.
-        :param img: Image to process.
-        :return: Processed image.
-        """
+        size = [size[1], size[0], size[2]]
+        mask = np.zeros(size, dtype=np.uint8)
+        h, w = self.img.shape[0:2]
+        dwh = min([size[0] / h, size[1] / w])
+        self.img = cv2.resize(self.img, None, fx=dwh, fy=dwh)
+        if h > w:
+            dxy = int((size[1] - self.img.shape[1]) / 2)
+            mask[:, dxy:self.img.shape[1] + dxy, :] = self.img
+        else:
+            dxy = int((size[0] - self.img.shape[0]) / 2)
+            mask[dxy:self.img.shape[0] + dxy, :, :] = self.img
+
+        return mask
+
+    # Process the image for contour detection
+    def process(self, img=None):
         if img is not None:
             self.img = img
 
@@ -96,21 +83,12 @@ class ImageHandler:
         return self.img
 
     def get_distance(self, pt1, pt2):
-        """
-        Calculate the Euclidean distance between two points.
-        :param pt1: First point as a tuple (x, y).
-        :param pt2: Second point as a tuple (x, y).
-        :return: Euclidean distance.
-        """
         return ((pt2[0] - pt1[0]) ** 2 + (pt2[1] - pt1[1]) ** 2) ** 0.5
 
+    # Detect specific gestures based on the processed contours
     def detect(self):
-        """
-        Detect specific gestures based on the processed contours.
-        :return: Gesture detected as a string.
-        """
         num = 0
-        if self.points_list.any():
+        if np.any(self.points_list):
             max_index = np.argmax(self.points_list, axis=0)
             for point in self.points_list:
                 distance = self.get_distance(self.points_list[max_index[1]], point)
@@ -134,33 +112,29 @@ class ImageHandler:
             cv2.putText(self.output_img, gesture, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 4)
             return gesture
 
+    # Entrance
     def get_hand(self, img):
-        """
-        Main function to handle hand gesture detection.
-        :param img: Image to process.
-        :return: Tuple of the original image, processed image, and detected gesture.
-        """
         self.img = img
         if img.shape[:2] != (480, 640):
             self.img = self.resize_img(img, (480, 640, 3))
         self.output_img = np.copy(self.img)
-        self.img_handle()
+        self.process()
         gesture = self.detect()
         return self.output_img, self.img, gesture
 
 
-class GestureRecognitionGUI:
+class GUI:
     def __init__(self):
         self.image_handler = ImageHandler(20000, 1000, 280)
         self.result_text = ''
-        self.video_capture = None
-        self.after_id = None
-        self.supported_files = ['.mp4', '.png', '.jpg']
-        self.selected_file = ''
+        self.video = ''
+        self.after = ''
+        self.file_type = ['.mp4', '.png', '.jpg']
+        self.file_name = ''
 
         self.root = tk.Tk()
         self.root.geometry('1000x700')
-        self.root.title('Gesture Recognition')
+        self.root.title('Scuba Hand Singal Recognition')
         self.root.resizable(width=False, height=False)
 
         self.img1_label = tk.Label(self.root, text='', bg='white', bd=10)
@@ -183,56 +157,58 @@ class GestureRecognitionGUI:
         self.result_entry.place(x=340, y=520, width=640, height=140)
 
         self.distance_threshold_var = tk.IntVar(self.root)
-        self.distance_scale = tk.Scale(self.root, label='Distance Threshold', from_=0, to=800, resolution=1, orient=tk.HORIZONTAL, tickinterval=200, variable=self.distance_threshold_var, bg='white', bd=10)
+        self.distance_scale = tk.Scale(self.root, label='Distance Threshold', from_=0, to=800, 
+                                       resolution=1, orient=tk.HORIZONTAL, tickinterval=200, variable=self.distance_threshold_var, bg='white', bd=10)
         self.distance_scale.place(x=20, y=620, width=250)
         self.update_result()
 
     def toggle_camera(self):
-        if self.video_capture:
-            self.video_capture.release()
-            self.video_capture = None
-            if self.after_id:
-                self.root.after_cancel(self.after_id)
-        else:
-            self.video_capture = cv2.VideoCapture(0)
-            self.stream_video()
+        if self.video:
+            self.video.release()
+        self.video = cv2.VideoCapture(0)
+        if self.after:
+            self.root.after_cancel(self.after)
+        self.open_video()
 
-    def stream_video(self):
-        success, img = self.video_capture.read()
-        if success and img is not None:
-            processed_img1, processed_img2, gesture = self.image_handler.get_hand(img)
-            self.display_image1(processed_img1)
-            self.display_image2(processed_img2)
-        self.after_id = self.root.after(10, self.stream_video)
+    def open_video(self):
+        res, img=self.video.read()
+        if res == True and np.any(img):
+            img1, img2, self.result_text = self.image_handler.get_hand(img)
+            self.display_image1(img1)
+            self.display_image2(img2)
+        self.after = self.root.after(10, self.open_video)
 
     def open_file(self):
-        if not self.selected_file:
+        if not self.file_name:
             messagebox.showerror(title='Warning', message='Please select a video or image file.')
+        elif self.file_type[0] in self.file_name:
+            if self.video:
+                self.video.release()
+            self.video = cv2.VideoCapture(self.file_name)
+            if self.after:
+                self.root.after_cancel(self.after)
+            self.open_video()
         else:
-            if any(ext in self.selected_file for ext in self.supported_files):
-                if self.video_capture:
-                    self.video_capture.release()
-                self.video_capture = cv2.VideoCapture(self.selected_file)
-                if self.after_id:
-                    self.root.after_cancel(self.after_id)
-                self.stream_video()
-            else:
-                if self.video_capture:
-                    self.video_capture.release()
-                img = cv2.imread(self.selected_file)
-                processed_img1, processed_img2, gesture = self.image_handler.get_hand(img)
-                self.display_image1(processed_img1)
-                self.display_image2(processed_img2)
+            if self.video:
+                self.video.release()
+            img = cv2.imread(self.file_name)
+            img1, img2, self.result_text = self.image_handler.get_hand(img)
+            self.display_image1(img1)
+            self.display_image2(img2)
 
     def select_file(self):
-        self.selected_file = filedialog.askopenfilename()
-        if not any(ext in self.selected_file for ext in self.supported_files):
-            messagebox.showerror(title='Warning', message='Please select a video or image file.')
+        self.file_name = filedialog.askopenfilename()
+        num = 0
+        for path in self.file_type:
+            if path not in self.file_name:
+                    num += 1
+        if num == 3:
+            messagebox.showerror(title='Warning', message='Please select a video or image file.')      
 
     def update_result(self):
         distance = self.distance_threshold_var.get()
         self.image_handler.change_distance(distance)
-        self.result_var.set(f'Gesture detection result: {self.result_text}')
+        self.result_var.set(f'Our signal prediction: {self.result_text}')
         self.root.after(10, self.update_result)
 
     def display_image1(self, img):
@@ -244,7 +220,7 @@ class GestureRecognitionGUI:
 
     def display_image2(self, img):
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-        img = self.image_handler.resize_img(img, target_size=(400, 250, 3))
+        img = self.image_handler.resize_img(img, [250, 400, 3])
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGBA)
         img_pil = Image.fromarray(img)
         img_tk = ImageTk.PhotoImage(image=img_pil)
@@ -252,7 +228,7 @@ class GestureRecognitionGUI:
         self.img2_label['image'] = img_tk
 
     def run(self):
-        messagebox.showinfo('Notice', message='Adjust the distance threshold slider to around 273 before starting, and wear a mask for better detection accuracy.')
+        messagebox.showinfo('Notice', message='Adjust the distance threshold for better performance.')
         self.root.mainloop()
 
     def close(self):
@@ -261,6 +237,6 @@ class GestureRecognitionGUI:
 
 
 if __name__ == "__main__":
-    app = GestureRecognitionGUI()
+    app = GUI()
     app.run()
     app.close()
