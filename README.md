@@ -1,2 +1,3 @@
-# Gesture_Recognition_Mini-game
+# Scuba Hand Signal Recognition  
+
 This is an application of the most classic computer vision methods.
