@@ -73,55 +73,64 @@ class ImageHandler:
             area = cv2.contourArea(contour)
             length = cv2.arcLength(contour, True)
             if self.max_area > area > self.min_area and self.max_length > length > self.min_length:
-                epsilon = 0.02 * length
-                approx_points = cv2.approxPolyDP(contour, epsilon, True)
-                approx_points = approx_points.reshape(len(approx_points), 2)
-                self.points_list = np.array(approx_points, dtype=np.int32)
+                epsilon = 0.02 * cv2.arcLength(contour, True)
+                self.points_list = cv2.approxPolyDP(contour, epsilon, True)
+                self.points_list = self.points_list.reshape(len(self.points_list), 2)
+                self.points_list = np.array(self.points_list, dtype=np.int32)
+
                 if self.draw_type == 0:
-                    color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
-                    cv2.polylines(self.output_img, [self.points_list], True, color, 4)
+                    b = random.randint(0, 255)
+                    g = random.randint(0, 255)
+                    r = random.randint(0, 255)
+                    cv2.polylines(self.output_img, [self.points_list], True, [b, g, r], 4, 16)
+
         return self.img
 
     def get_distance(self, pt1, pt2):
         return ((pt2[0] - pt1[0]) ** 2 + (pt2[1] - pt1[1]) ** 2) ** 0.5
 
     # Detect specific gestures based on the processed contours
+    # TODO: Add other approaches
     def detect(self):
+        gesture = ''
         num = 0
         if np.any(self.points_list):
             max_index = np.argmax(self.points_list, axis=0)
             for point in self.points_list:
-                distance = self.get_distance(self.points_list[max_index[1]], point)
+                distance = self.get_distance(self.points_list[max_index[1], :], point)
                 if distance > self.distance:
                     if self.draw_type == 1:
-                        color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
-                        cv2.line(self.output_img, self.points_list[max_index[1]], point, color, 4)
+                        b = random.randint(0, 255)
+                        g = random.randint(0, 255)
+                        r = random.randint(0, 255)
+                        cv2.line(self.output_img,self.points_list[max_index[1], :], point, [b, g, r], 4, 16)
                     num += 1
+            
             if num == 1:
                 gesture = 'One'
             elif num == 2:
-                gesture = 'Scissors'
+                gesture = 'Two'
             elif num == 3:
-                gesture = 'OK'
+                gesture = 'Three'
             elif num == 4:
                 gesture = 'Four'
             elif num == 5:
-                gesture = 'Paper'
+                gesture = 'Five'
             else:
                 gesture = 'Unknown'
-            cv2.putText(self.output_img, gesture, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 4)
+            cv2.putText(self.output_img, gesture, [10, 50], cv2.FONT_HERSHEY_SIMPLEX, 2, [0, 0, 255], thickness=4)
             return gesture
 
     # Entrance
     def get_hand(self, img):
         self.img = img
-        if img.shape[:2] != (480, 640):
-            self.img = self.resize_img(img, (480, 640, 3))
+        if self.img.shape[0] != 480 and self.img.shape[1] != 640:
+            self.img = self.resize_img(img, [640, 480, 3])
         self.output_img = np.copy(self.img)
-        self.process()
+        self.img = self.process()
         gesture = self.detect()
         return self.output_img, self.img, gesture
-
+    
 
 class GUI:
     def __init__(self):
@@ -232,8 +241,8 @@ class GUI:
         self.root.mainloop()
 
     def close(self):
-        if self.video_capture:
-            self.video_capture.release()
+        if self.video:
+            self.video.release()
 
 
 if __name__ == "__main__":
